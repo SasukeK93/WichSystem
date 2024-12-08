@@ -1,64 +1,84 @@
 ﻿using System.Net.NetworkInformation;
 using System.Text;
 
-namespace WitchSystem
+namespace WichSystem;
+
+internal static class Program
 {
-    class Program
+    // Usage: ./WichSystem <ip-address>
+    public static int Main(string[] args)
     {
-        // Usage : ./WitchSystem 127.0.0.1
-
-        public static int Main(string[] args)
+        if (args.Length != 1)
         {
-            if (args.Count() != 1)
-            {
-                Console.WriteLine("Usage : ./WitchSystem <ip-address>");
-                return 1;
-            }
-
-            try
-            {
-                var ttl = GetTTL(args[0]);
-                var OsName = GetOS(ttl);
-
-                Console.WriteLine("{0} (ttl -> {1}): {2}",
-                args[0],
-                ttl,
-                OsName);
-            }
-            catch(Exception ex)
-            {
-                Console.WriteLine("{0} : {1}",
-                args[0],
-                ex.ToString());
-            }
-
-            return 0;
+            Console.WriteLine("Usage: ./WichSystem <ip-address>");
+            return 1;
         }
 
-        public static int GetTTL(String ip_address)
+        var ipAddress = args[0];
+
+        try
         {
-            Ping pingSender = new Ping();
-            PingOptions options = new PingOptions();
+            var ttl = GetTtl(ipAddress);
+            var osName = DetectOperatingSystem(ttl);
 
-            // Use the default Ttl value which is 128,
-            // but change the fragmentation behavior.
-            options.DontFragment = true;
-
-            // Create a buffer of 32 bytes of data to be transmitted.
-            string data = "abcdefghijklmnopqrstuvwabcdefghij";
-            byte[] buffer = Encoding.ASCII.GetBytes(data);
-            int timeout = 120;
-            PingReply reply = pingSender.Send(ip_address, timeout, buffer, options);
-
-            if (reply.Status == IPStatus.Success) return reply.Options.Ttl;
-            else throw new Exception(reply.Status.ToString());
+            Console.WriteLine($"{ipAddress} (ttl -> {ttl}): {osName}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"{ipAddress} : {ex.Message}");
+            return 1;
         }
 
-        public static string GetOS(int ttl)
+        return 0;
+    }
+
+    /// <summary>
+    /// Sends a ping to the specified IP address and returns the Time To Live (TTL) value.
+    /// </summary>
+    /// <param name="ipAddress">The target IP address.</param>
+    /// <returns>The TTL value from the ping response.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the ping fails or no TTL is returned.</exception>
+    private static int GetTtl(string ipAddress)
+    {
+        using var pingSender = new Ping();
+        var options = new PingOptions
         {
-            if (ttl >= 0 && ttl <= 64) return "Linux";
-            else if (ttl >= 65 && ttl <= 128) return "Windows";
-            else return "Unknow";
+            // Default TTL is often 128; this might be adjusted by network devices.
+            DontFragment = true
+        };
+
+        // Create a buffer of data to send (32 bytes).
+        const string data = "abcdefghijklmnopqrstuvwabcdefghij";
+        const int timeout = 200;
+        var buffer = Encoding.ASCII.GetBytes(data);
+
+        var reply = pingSender.Send(ipAddress, timeout, buffer, options);
+
+        if (reply.Status == IPStatus.Success && reply.Options != null)
+        {
+            return reply.Options.Ttl;
         }
+
+        // If the ping wasn't successful, throw an exception with a descriptive message.
+        throw new InvalidOperationException(
+            $"Ping to {ipAddress} failed with status: {reply.Status}");
+    }
+
+    /// <summary>
+    /// Determines the likely operating system based on the given TTL value.
+    /// </summary>
+    /// <param name="ttl">The Time To Live value from the ping response.</param>
+    /// <returns>A string representing the likely operating system.</returns>
+    private static string DetectOperatingSystem(int ttl)
+    {
+        // Basic heuristic:
+        // - TTL values around 64 often come from Linux/Unix-like systems.
+        // - TTL values around 128 often come from Windows systems.
+        return ttl switch
+        {
+            <= 64 => "Linux",
+            <= 128 => "Windows",
+            _ => "Unknown"
+        };
     }
 }
